@@ -9,8 +9,8 @@ import (
 
 	"github.com/hashicorp/go-azure-helpers/lang/pointer"
 	"github.com/hashicorp/go-azure-helpers/resourcemanager/commonids"
-	"github.com/hashicorp/go-azure-sdk/resource-manager/containerapps/2023-05-01/containerapps"
 	"github.com/hashicorp/go-azure-sdk/resource-manager/containerapps/2023-05-01/daprcomponents"
+	"github.com/hashicorp/go-azure-sdk/resource-manager/containerapps/2024-02-02-preview/containerapps"
 	"github.com/hashicorp/go-azure-sdk/resource-manager/containerapps/2024-03-01/managedenvironments"
 	"github.com/hashicorp/terraform-provider-azurerm/internal/features"
 	"github.com/hashicorp/terraform-provider-azurerm/internal/sdk"
@@ -2846,6 +2846,8 @@ type AzureQueueScaleRule struct {
 	QueueLength     int64                     `tfschema:"queue_length"`
 	QueueName       string                    `tfschema:"queue_name"`
 	Authentications []ScaleRuleAuthentication `tfschema:"authentication"`
+	AccountName     string                    `tfschema:"accountName"`
+	Identity        string                    `tfschema:"identity"`
 }
 
 func AzureQueueScaleRuleSchema() *pluginsdk.Schema {
@@ -2892,6 +2894,22 @@ func AzureQueueScaleRuleSchema() *pluginsdk.Schema {
 						},
 					},
 				},
+
+				"accountName": {
+					Type:        pluginsdk.TypeString,
+					Optional:    true,
+					Description: "The storage account name for this queue. Required if using managed identity to authenticate.",
+				},
+
+				"identity": {
+					Type:     pluginsdk.TypeString,
+					Optional: true,
+					ValidateFunc: validation.Any(
+						commonids.ValidateUserAssignedIdentityID,
+						validation.StringInSlice([]string{"system"}, true),
+					),
+					Description: "The identity to use for accessing key vault reference.",
+				},
 			},
 		},
 	}
@@ -2933,6 +2951,17 @@ func AzureQueueScaleRuleSchemaComputed() *pluginsdk.Schema {
 							},
 						},
 					},
+				},
+
+				"accountName": {
+					Type:     pluginsdk.TypeString,
+					Computed: true,
+				},
+
+				"identity": {
+					Type:        pluginsdk.TypeString,
+					Computed:    true,
+					Description: "The identity to use for accessing key vault reference.",
 				},
 			},
 		},
@@ -3077,6 +3106,7 @@ type HTTPScaleRule struct {
 	Name               string                    `tfschema:"name"`
 	ConcurrentRequests string                    `tfschema:"concurrent_requests"`
 	Authentications    []ScaleRuleAuthentication `tfschema:"authentication"`
+	Identity           string                    `tfschema:"identity"`
 }
 
 func HTTPScaleRuleSchema() *pluginsdk.Schema {
@@ -3117,6 +3147,16 @@ func HTTPScaleRuleSchema() *pluginsdk.Schema {
 						},
 					},
 				},
+
+				"identity": {
+					Type:     pluginsdk.TypeString,
+					Optional: true,
+					ValidateFunc: validation.Any(
+						commonids.ValidateUserAssignedIdentityID,
+						validation.StringInSlice([]string{"system"}, true),
+					),
+					Description: "The identity to use for accessing key vault reference.",
+				},
 			},
 		},
 	}
@@ -3155,6 +3195,12 @@ func HTTPScaleRuleSchemaComputed() *pluginsdk.Schema {
 						},
 					},
 				},
+
+				"identity": {
+					Type:        pluginsdk.TypeString,
+					Computed:    true,
+					Description: "The identity to use for accessing key vault reference.",
+				},
 			},
 		},
 	}
@@ -3164,6 +3210,7 @@ type TCPScaleRule struct {
 	Name               string                    `tfschema:"name"`
 	ConcurrentRequests string                    `tfschema:"concurrent_requests"`
 	Authentications    []ScaleRuleAuthentication `tfschema:"authentication"`
+	Identity           string                    `tfschema:"identity"`
 }
 
 func TCPScaleRuleSchema() *pluginsdk.Schema {
@@ -3204,6 +3251,16 @@ func TCPScaleRuleSchema() *pluginsdk.Schema {
 						},
 					},
 				},
+
+				"identity": {
+					Type:     pluginsdk.TypeString,
+					Optional: true,
+					ValidateFunc: validation.Any(
+						commonids.ValidateUserAssignedIdentityID,
+						validation.StringInSlice([]string{"system"}, true),
+					),
+					Description: "The identity to use for accessing key vault reference.",
+				},
 			},
 		},
 	}
@@ -3242,6 +3299,12 @@ func TCPScaleRuleSchemaComputed() *pluginsdk.Schema {
 						},
 					},
 				},
+
+				"identity": {
+					Type:        pluginsdk.TypeString,
+					Computed:    true,
+					Description: "The identity to use for accessing key vault reference.",
+				},
 			},
 		},
 	}
@@ -3263,6 +3326,8 @@ func (c *ContainerTemplate) expandContainerAppScaleRules() []containerapps.Scale
 			AzureQueue: &containerapps.QueueScaleRule{
 				QueueLength: pointer.To(v.QueueLength),
 				QueueName:   pointer.To(v.QueueName),
+				AccountName: pointer.To(v.AccountName),
+				Identity:    pointer.To(v.Identity),
 			},
 		}
 
@@ -3286,6 +3351,7 @@ func (c *ContainerTemplate) expandContainerAppScaleRules() []containerapps.Scale
 			Custom: &containerapps.CustomScaleRule{
 				Metadata: pointer.To(v.Metadata),
 				Type:     pointer.To(v.CustomRuleType),
+				Identity: pointer.To(v.Identity),
 			},
 		}
 
@@ -3310,6 +3376,7 @@ func (c *ContainerTemplate) expandContainerAppScaleRules() []containerapps.Scale
 			Name: pointer.To(v.Name),
 			HTTP: &containerapps.HTTPScaleRule{
 				Metadata: pointer.To(metaData),
+				Identity: pointer.To(v.Identity),
 			},
 		}
 
@@ -3334,6 +3401,7 @@ func (c *ContainerTemplate) expandContainerAppScaleRules() []containerapps.Scale
 			Name: pointer.To(v.Name),
 			Tcp: &containerapps.TcpScaleRule{
 				Metadata: pointer.To(metaData),
+				Identity: pointer.To(v.Identity),
 			},
 		}
 
@@ -3367,6 +3435,8 @@ func (c *ContainerTemplate) flattenContainerAppScaleRules(input *[]containerapps
 					Name:        pointer.From(v.Name),
 					QueueLength: pointer.From(q.QueueLength),
 					QueueName:   pointer.From(q.QueueName),
+					AccountName: pointer.From(q.AccountName),
+					Identity:    pointer.From(q.AccountName),
 				}
 
 				authentications := make([]ScaleRuleAuthentication, 0)
@@ -3390,6 +3460,7 @@ func (c *ContainerTemplate) flattenContainerAppScaleRules(input *[]containerapps
 					Name:           pointer.From(v.Name),
 					Metadata:       pointer.From(r.Metadata),
 					CustomRuleType: pointer.From(r.Type),
+					Identity:       pointer.From(r.Identity),
 				}
 
 				authentications := make([]ScaleRuleAuthentication, 0)
@@ -3418,6 +3489,7 @@ func (c *ContainerTemplate) flattenContainerAppScaleRules(input *[]containerapps
 				rule := HTTPScaleRule{
 					Name:               pointer.From(v.Name),
 					ConcurrentRequests: concurrentReqs,
+					Identity:           pointer.From(r.Identity),
 				}
 
 				authentications := make([]ScaleRuleAuthentication, 0)
@@ -3447,6 +3519,7 @@ func (c *ContainerTemplate) flattenContainerAppScaleRules(input *[]containerapps
 				rule := TCPScaleRule{
 					Name:               pointer.From(v.Name),
 					ConcurrentRequests: concurrentReqs,
+					Identity:           pointer.From(r.Identity),
 				}
 
 				authentications := make([]ScaleRuleAuthentication, 0)
